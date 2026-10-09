@@ -16,7 +16,9 @@
       "reauth_confirm": {
         "title": "Reconnexion Solenso",
         "description": "Le mot de passe de {username} n'est plus accepté. Saisissez le nouveau.",
-        "data": { "password": "Mot de passe" }
+        "data": {
+          "password": "Mot de passe"
+        }
       }
     },
     "error": {
@@ -33,12 +35,62 @@
   },
   "entity": {
     "sensor": {
-      "power": { "name": "Puissance" },
-      "energy_today": { "name": "Production du jour" },
-      "energy_month": { "name": "Production du mois" },
-      "energy_year": { "name": "Production de l'année" },
-      "energy_total": { "name": "Production totale" },
-      "last_update": { "name": "Dernière remontée" }
+      "power": {
+        "name": "Puissance"
+      },
+      "energy_today": {
+        "name": "Production du jour"
+      },
+      "energy_month": {
+        "name": "Production du mois"
+      },
+      "energy_year": {
+        "name": "Production de l'année"
+      },
+      "energy_total": {
+        "name": "Production totale"
+      },
+      "last_update": {
+        "name": "Dernière remontée"
+      },
+      "temperature": {
+        "name": "Température"
+      },
+      "grid_voltage": {
+        "name": "Tension réseau"
+      },
+      "grid_frequency": {
+        "name": "Fréquence réseau"
+      },
+      "pv_voltage": {
+        "name": "Tension panneau"
+      },
+      "pv_current": {
+        "name": "Courant panneau"
+      },
+      "pv_power": {
+        "name": "Puissance panneau"
+      },
+      "pv_energy": {
+        "name": "Production panneau du jour"
+      },
+      "pv_voltage_port": {
+        "name": "Tension panneau {port}"
+      },
+      "pv_current_port": {
+        "name": "Courant panneau {port}"
+      },
+      "pv_power_port": {
+        "name": "Puissance panneau {port}"
+      },
+      "pv_energy_port": {
+        "name": "Production panneau {port} du jour"
+      }
+    },
+    "binary_sensor": {
+      "dtu_connected": {
+        "name": "Connexion au cloud"
+      }
     }
   }
 }

@@ -13,11 +13,19 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.solenso.api import hash_password
-from custom_components.solenso.const import BASE_URL, CONF_STATIONS, DOMAIN
+from custom_components.solenso.const import BASE_URL, CONF_STATIONS, DOMAIN, HOYMILES_URL
 
 LOGIN = f"{BASE_URL}/iam/auth_login"
 STATIONS = f"{BASE_URL}/pvm/station_select_by_page"
 REAL = f"{BASE_URL}/pvm-data/data_count_station_real_data"
+
+EMPTY_LIST = {"status": "0", "message": "success", "data": {"list": []}}
+
+
+def mock_no_devices(aioclient_mock):
+    aioclient_mock.post(f"{HOYMILES_URL}/pvm/api/0/dev/micro/select_by_station", json=EMPTY_LIST)
+    aioclient_mock.post(f"{HOYMILES_URL}/pvm/api/0/dev/dtu/select_by_station", json=EMPTY_LIST)
+
 
 OK_LOGIN = {"status": "0", "message": "success", "data": {"token": "tok123"}}
 OK_STATIONS = {"status": "0", "data": {"list": [{"id": 1234567, "name": "Maison"}]}}
@@ -131,6 +139,7 @@ def _entry() -> MockConfigEntry:
 async def test_sensors(hass: HomeAssistant, aioclient_mock):
     aioclient_mock.post(LOGIN, json=OK_LOGIN)
     aioclient_mock.post(REAL, json=real_data())
+    mock_no_devices(aioclient_mock)
     entry = _entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
@@ -148,13 +157,14 @@ async def test_sensors(hass: HomeAssistant, aioclient_mock):
     assert round(float(total.state), 3) == 22411.023
     assert total.attributes["state_class"] == "total_increasing"
     # Le token est bien transmis à l'appel de données.
-    headers = aioclient_mock.mock_calls[1][3]
+    headers = next(c[3] for c in aioclient_mock.mock_calls if str(c[1]) == REAL)
     assert headers["token"] == "tok123" and "solenso_token=tok123" in headers["Cookie"]
 
 
 async def test_power_zero_when_data_stale(hass: HomeAssistant, aioclient_mock):
     aioclient_mock.post(LOGIN, json=OK_LOGIN)
     aioclient_mock.post(REAL, json=real_data(minutes_ago=600))
+    mock_no_devices(aioclient_mock)
     entry = _entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)

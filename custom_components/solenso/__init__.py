@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import SolensoApi
 from .coordinator import SolensoConfigEntry, SolensoCoordinator
+from .entity import dtu_device, station_device
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SolensoConfigEntry) -> bool:
@@ -20,6 +22,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolensoConfigEntry) -> b
     coordinator = SolensoCoordinator(hass, entry, api)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
+
+    # Enregistrer centrale puis DTU avant les onduleurs, qui s'y rattachent.
+    registry = dr.async_get(hass)
+    for station in coordinator.stations:
+        registry.async_get_or_create(config_entry_id=entry.entry_id, **station_device(station))
+        dtus = list(coordinator.data[station["id"]].dtus.values())
+        known = {d.get("sn") for d in dtus}
+        # DTU citées par les onduleurs mais absentes de la liste (appel en échec).
+        for micro in coordinator.micros.get(station["id"], []):
+            sn = micro.get("dtu_sn")
+            if sn and sn not in known:
+                known.add(sn)
+                dtus.append({"id": micro.get("dtu_id") or sn, "sn": sn})
+        for dtu in dtus:
+            registry.async_get_or_create(
+                config_entry_id=entry.entry_id, **dtu_device(station["id"], dtu)
+            )
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

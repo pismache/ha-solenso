@@ -27,6 +27,23 @@ Pour chaque centrale :
 | Production totale | kWh | **à utiliser dans le tableau Énergie** |
 | Dernière remontée | horodatage | diagnostic |
 
+### Micro-onduleurs
+
+Chaque micro-onduleur devient un appareil (rattaché à sa passerelle DTU, elle-même rattachée à la centrale), avec :
+
+| Capteur | Unité | Remarque |
+|---|---|---|
+| Puissance | W | |
+| Production du jour | kWh | |
+| Tension panneau / Courant panneau | V / A | par entrée PV si l'onduleur en a plusieurs |
+| Température | °C | |
+| Tension réseau, Fréquence réseau | V, Hz | diagnostic |
+| Dernière remontée | horodatage | diagnostic |
+
+Les mesures arrivent par pas de 15 minutes. Sans nouveau point depuis 45 minutes (la nuit), puissance, tension et courant passent à 0 et la température devient inconnue ; la production du jour reste acquise jusqu'à minuit.
+
+La passerelle DTU expose un capteur **Connexion au cloud**.
+
 Mise à jour toutes les 5 minutes. Le cloud Solenso ne recalcule les cumuls mois/année/total qu'en différé ; la production du jour et la puissance sont plus réactives.
 
 ## Fonctionnement

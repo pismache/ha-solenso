@@ -16,7 +16,9 @@
       "reauth_confirm": {
         "title": "Re-authenticate Solenso",
         "description": "The password for {username} is no longer accepted. Enter the new one.",
-        "data": { "password": "Password" }
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -33,12 +35,62 @@
   },
   "entity": {
     "sensor": {
-      "power": { "name": "Power" },
-      "energy_today": { "name": "Energy today" },
-      "energy_month": { "name": "Energy this month" },
-      "energy_year": { "name": "Energy this year" },
-      "energy_total": { "name": "Total energy" },
-      "last_update": { "name": "Last data upload" }
+      "power": {
+        "name": "Power"
+      },
+      "energy_today": {
+        "name": "Energy today"
+      },
+      "energy_month": {
+        "name": "Energy this month"
+      },
+      "energy_year": {
+        "name": "Energy this year"
+      },
+      "energy_total": {
+        "name": "Total energy"
+      },
+      "last_update": {
+        "name": "Last data upload"
+      },
+      "temperature": {
+        "name": "Temperature"
+      },
+      "grid_voltage": {
+        "name": "Grid voltage"
+      },
+      "grid_frequency": {
+        "name": "Grid frequency"
+      },
+      "pv_voltage": {
+        "name": "PV voltage"
+      },
+      "pv_current": {
+        "name": "PV current"
+      },
+      "pv_power": {
+        "name": "PV power"
+      },
+      "pv_energy": {
+        "name": "PV energy today"
+      },
+      "pv_voltage_port": {
+        "name": "PV {port} voltage"
+      },
+      "pv_current_port": {
+        "name": "PV {port} current"
+      },
+      "pv_power_port": {
+        "name": "PV {port} power"
+      },
+      "pv_energy_port": {
+        "name": "PV {port} energy today"
+      }
+    },
+    "binary_sensor": {
+      "dtu_connected": {
+        "name": "Cloud connection"
+      }
     }
   }
 }
