@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
 
@@ -28,8 +29,11 @@ async def async_register_card(hass: HomeAssistant, version: str) -> None:
         await hass.http.async_register_static_paths(
             [StaticPathConfig(CARD_URL, str(CARD_FILE), cache_headers=False)]
         )
-        # Le paramètre de version force le navigateur à recharger la carte après une mise à jour.
-        add_extra_js_url(hass, f"{CARD_URL}?v={version}")
+        # Version + empreinte du fichier : le navigateur recharge la carte dès qu'elle change.
+        digest = await hass.async_add_executor_job(
+            lambda: hashlib.sha256(CARD_FILE.read_bytes()).hexdigest()[:8]
+        )
+        add_extra_js_url(hass, f"{CARD_URL}?v={version}-{digest}")
         hass.data[_DATA_KEY] = True
     except Exception:  # noqa: BLE001 - la carte ne doit jamais bloquer les capteurs
         _LOGGER.warning("Impossible de proposer la carte Solenso", exc_info=True)
