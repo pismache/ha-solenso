@@ -106,6 +106,18 @@ def micro_state(day: MicroDay | None, day_date: date, now: datetime) -> MicroSta
     )
 
 
+def _positions(items: list[dict[str, Any]]) -> dict[int, dict[str, int]]:
+    """Première position connue de chaque onduleur (le port 1 pour un onduleur à plusieurs entrées)."""
+    positions: dict[int, dict[str, int]] = {}
+    for item in sorted(items, key=lambda i: (i.get("port") or 0)):
+        try:
+            micro_id, row, column = int(item["mi_id"]), int(item["x"]), int(item["y"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        positions.setdefault(micro_id, {"row": row, "column": column, "array": int(item.get("aid") or 0)})
+    return positions
+
+
 class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
     """Récupère les données de toutes les centrales du compte."""
 
@@ -123,6 +135,8 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
         self.stations: list[dict[str, Any]] = entry.data[CONF_STATIONS]
         # Inventaire des micro-onduleurs par centrale : {sid: [micro, ...]}
         self.micros: dict[int, list[dict[str, Any]]] = {}
+        # Position de chaque onduleur sur le plan : {sid: {id onduleur: {"row", "column", "array"}}}
+        self.layout: dict[int, dict[int, dict[str, int]]] = {}
         self._micros_fetched_at: datetime | None = None
         self._module_warned = False
 
@@ -138,6 +152,13 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
             except SolensoError as err:
                 _LOGGER.warning("Liste des micro-onduleurs indisponible : %s", err)
                 self.micros.setdefault(station["id"], [])
+            try:
+                self.layout[station["id"]] = _positions(await self.api.get_layout(station["id"]))
+            except SolensoAuthError:
+                raise
+            except SolensoError as err:
+                _LOGGER.debug("Disposition des panneaux indisponible : %s", err)
+                self.layout.setdefault(station["id"], {})
         self._micros_fetched_at = now
 
     async def _station(self, sid: int, previous: StationData | None) -> StationData:

@@ -3,6 +3,7 @@
 ## 0.3.0 — 2026-10-09
 
 - Carte « Panneau solaire » livrée avec l'intégration et chargée automatiquement : un panneau par micro-onduleur, éclairé selon sa production, avec la puissance et une plaque jour / mois / total.
+- Disposition réelle des panneaux reprise de la page « Agencement » de Solenso (position exposée en attributs `layout_*`).
 - Éditeur visuel de la carte (centrale, colonnes, puissance crête, affichage des watts).
 - Rattachement des appareils compatible avec les prochaines versions de Home Assistant (`via_device` déprécié).
 

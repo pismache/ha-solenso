@@ -20,6 +20,7 @@ REAL = f"{BASE_URL}/pvm-data/data_count_station_real_data"
 MICROS = f"{HOYMILES_URL}/pvm/api/0/dev/micro/select_by_station"
 DTUS = f"{HOYMILES_URL}/pvm/api/0/dev/dtu/select_by_station"
 MODULE = f"{HOYMILES_URL}/pvm-data/api/0/module/data/down_module_day_data"
+LAYOUT = f"{BASE_URL}/pvm/layout_select_all"
 SID = 42
 
 # --- Encodeur protobuf minimal pour fabriquer des réponses de test -------------
@@ -179,8 +180,20 @@ def auto_enable_custom_integrations(enable_custom_integrations):
     yield
 
 
-async def _setup(hass, aioclient_mock, module_body: bytes | None, module_status: int = 200):
+LAYOUT_LIST = {
+    "status": "0",
+    "message": "success",
+    "data": [
+        {"id": 1, "aid": 77, "dev_type": 3, "mi_id": 101, "mi_sn": "112100000001", "port": 1, "x": 1, "y": 7},
+        {"id": 2, "aid": 77, "dev_type": 3, "mi_id": 102, "mi_sn": "112100000002", "port": 1, "x": 0, "y": 3},
+    ],
+}
+
+
+async def _setup(hass, aioclient_mock, module_body: bytes | None, module_status: int = 200, layout=None):
     aioclient_mock.post(LOGIN, json={"status": "0", "data": {"token": "tok"}})
+    if layout is not None:
+        aioclient_mock.post(LAYOUT, **layout)
     aioclient_mock.post(REAL, json=_real())
     aioclient_mock.post(MICROS, json=MICRO_LIST)
     aioclient_mock.post(DTUS, json=DTU_LIST)
@@ -203,8 +216,12 @@ async def test_micro_sensors_and_devices(hass: HomeAssistant, aioclient_mock):
         encode_micro(102, times, {1: [(28.0, 0.08, 2.0, 0.0), (31.5, 0.2, 6.1, 1.0)]},
                      [11.0, 11.1], [230.2, 230.6], [49.99, 49.97]),
     )
-    entry = await _setup(hass, aioclient_mock, body)
+    entry = await _setup(hass, aioclient_mock, body, layout={"json": LAYOUT_LIST})
     assert entry.state is ConfigEntryState.LOADED
+    # Position sur le plan exposée pour la carte.
+    attrs = hass.states.get("sensor.micro_onduleur_112100000001_power").attributes
+    assert (attrs["layout_row"], attrs["layout_column"], attrs["layout_array"]) == (1, 7, 77)
+    assert "layout_row" not in hass.states.get("sensor.micro_onduleur_112100000001_temperature").attributes
 
     states = {s.entity_id: s for s in hass.states.async_all()}
     print(sorted(k for k in states if "112100000001" in k or "dtu" in k))
@@ -233,7 +250,7 @@ async def test_micro_sensors_and_devices(hass: HomeAssistant, aioclient_mock):
 
 
 async def test_micro_data_failure_keeps_station_sensors(hass: HomeAssistant, aioclient_mock):
-    entry = await _setup(hass, aioclient_mock, None, module_status=500)
+    entry = await _setup(hass, aioclient_mock, None, module_status=500, layout={"status": 500})
     assert entry.state is ConfigEntryState.LOADED
     assert float(hass.states.get("sensor.maison_power").state) == 11.4
     assert hass.states.get("sensor.micro_onduleur_112100000001_power").state == "unavailable"
@@ -242,8 +259,9 @@ async def test_micro_data_failure_keeps_station_sensors(hass: HomeAssistant, aio
 async def test_micro_not_reporting_yet_reads_zero(hass: HomeAssistant, aioclient_mock):
     # Le matin, avant le premier point : onduleur présent mais sans série.
     body = encode_day(encode_micro(101, slots(1), {1: [(30.0, 0.1, 3.0, 0.0)]}, [10.0], [230.0], [50.0]))
-    await _setup(hass, aioclient_mock, body)
+    await _setup(hass, aioclient_mock, body, layout={"json": {"status": "0", "data": []}})
     assert float(hass.states.get("sensor.micro_onduleur_112100000002_power").state) == 0
+    assert "layout_row" not in hass.states.get("sensor.micro_onduleur_112100000002_power").attributes
     assert float(hass.states.get("sensor.micro_onduleur_112100000002_energy_today").state) == 0
     assert hass.states.get("sensor.micro_onduleur_112100000002_temperature").state == "unknown"
 

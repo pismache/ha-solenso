@@ -310,6 +310,20 @@ class MicroSensor(_MicroEntity):
 
     entity_description: MicroSensorDescription
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        # La position sur le plan sert à la carte pour reproduire la disposition du toit.
+        if self.entity_description.key != "power":
+            return None
+        position = self.coordinator.layout.get(self._sid, {}).get(self._micro_id)
+        if not position:
+            return None
+        return {
+            "layout_row": position["row"],
+            "layout_column": position["column"],
+            "layout_array": position["array"],
+        }
+
     def __init__(self, coordinator, sid, micro, description: MicroSensorDescription) -> None:
         super().__init__(coordinator, sid, micro)
         self.entity_description = description

@@ -25,6 +25,7 @@ EMPTY_LIST = {"status": "0", "message": "success", "data": {"list": []}}
 def mock_no_devices(aioclient_mock):
     aioclient_mock.post(f"{HOYMILES_URL}/pvm/api/0/dev/micro/select_by_station", json=EMPTY_LIST)
     aioclient_mock.post(f"{HOYMILES_URL}/pvm/api/0/dev/dtu/select_by_station", json=EMPTY_LIST)
+    aioclient_mock.post(f"{BASE_URL}/pvm/layout_select_all", json={"status": "0", "data": []})
 
 
 OK_LOGIN = {"status": "0", "message": "success", "data": {"token": "tok123"}}

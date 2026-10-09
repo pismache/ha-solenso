@@ -174,6 +174,14 @@ class SolensoApi:
         res = await self._gateway_authed("pvm-data/data_count_station_real_data", {"sid": sid})
         return res.get("data") or {}
 
+    async def get_layout(self, sid: int) -> list[dict[str, Any]]:
+        """Disposition des panneaux (page Agencement) : mi_id, mi_sn, port, x (rangée), y (colonne), aid."""
+        res = await self._gateway_authed("pvm/layout_select_all", {"id": sid})
+        data = res.get("data")
+        if isinstance(data, dict):
+            data = data.get("list")
+        return [item for item in data or [] if isinstance(item, dict)]
+
     # --- Appareils (API Hoymiles) --------------------------------------------
 
     async def _hoymiles_list(self, path: str, body: dict[str, Any]) -> list[dict[str, Any]]:
