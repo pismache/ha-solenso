@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_integration
 
@@ -15,6 +16,18 @@ from .entity import dtu_device, micro_device, station_device
 from .frontend import async_register_card
 
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def _register_card(hass: HomeAssistant) -> None:
+    integration = await async_get_integration(hass, DOMAIN)
+    await async_register_card(hass, str(integration.version))
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Déclarer la carte dès le démarrage, sans attendre le cloud Solenso."""
+    await _register_card(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SolensoConfigEntry) -> bool:
@@ -52,8 +65,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolensoConfigEntry) -> b
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    integration = await async_get_integration(hass, DOMAIN)
-    await async_register_card(hass, str(integration.version))
+    # Filet de sécurité si l'interface web n'était pas prête au démarrage.
+    await _register_card(hass)
     return True
 
 

@@ -3,7 +3,7 @@
  * Chaque cellule = un micro-onduleur, éclairée selon sa puissance.
  * Livrée avec l'intégration Solenso (aucune ressource à ajouter à la main).
  */
-const CARD_VERSION = "0.4.0";
+const CARD_VERSION = "0.4.1";
 const DOMAIN = "solenso";
 
 const I18N = {

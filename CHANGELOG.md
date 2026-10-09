@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 0.4.1 — 2026-10-09
+
+- La carte est déclarée dès le démarrage de Home Assistant, même si le cloud Solenso ne répond pas encore : plus d'« Erreur de configuration » à la place de la carte après un redémarrage.
+
 ## 0.4.0 — 2026-10-09
 
 - La carte place les panneaux comme sur le toit, d'après la page « Agencement » de Solenso ; un bloc par toiture. Position exposée en attributs `layout_row`, `layout_column` et `layout_array` sur la puissance de chaque micro-onduleur.
