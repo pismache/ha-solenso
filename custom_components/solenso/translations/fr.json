@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Compte Solenso",
+        "description": "Connectez-vous avec le compte utilisé sur monitor.solenso.net.",
+        "data": {
+          "username": "E-mail",
+          "password": "Mot de passe",
+          "sid": "Identifiant de la centrale (facultatif)"
+        },
+        "data_description": {
+          "sid": "Uniquement si la centrale n'est pas trouvée automatiquement : c'est le nombre après id= dans l'adresse de la page de la centrale."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnexion Solenso",
+        "description": "Le mot de passe de {username} n'est plus accepté. Saisissez le nouveau.",
+        "data": { "password": "Mot de passe" }
+      }
+    },
+    "error": {
+      "invalid_auth": "E-mail ou mot de passe incorrect.",
+      "cannot_connect": "Impossible de joindre monitor.solenso.net.",
+      "station_not_found": "Centrale introuvable ou illisible avec ce compte. Vérifiez l'identifiant.",
+      "no_station": "Aucune centrale trouvée sur ce compte. Saisissez son identifiant à la main.",
+      "unknown": "Erreur inattendue, voir les journaux."
+    },
+    "abort": {
+      "already_configured": "Ce compte est déjà configuré.",
+      "reauth_successful": "Reconnexion réussie."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power": { "name": "Puissance" },
+      "energy_today": { "name": "Production du jour" },
+      "energy_month": { "name": "Production du mois" },
+      "energy_year": { "name": "Production de l'année" },
+      "energy_total": { "name": "Production totale" },
+      "last_update": { "name": "Dernière remontée" }
+    }
+  }
+}

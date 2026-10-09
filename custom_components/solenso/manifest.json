@@ -1,0 +1,12 @@
+{
+  "domain": "solenso",
+  "name": "Solenso",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/pismache/ha-solenso",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/pismache/ha-solenso/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

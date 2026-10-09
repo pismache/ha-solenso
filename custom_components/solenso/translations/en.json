@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Solenso account",
+        "description": "Sign in with the account you use on monitor.solenso.net.",
+        "data": {
+          "username": "Email",
+          "password": "Password",
+          "sid": "Station ID (optional)"
+        },
+        "data_description": {
+          "sid": "Only needed if your station is not found automatically: it is the number after id= in the station page URL."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Solenso",
+        "description": "The password for {username} is no longer accepted. Enter the new one.",
+        "data": { "password": "Password" }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email or password.",
+      "cannot_connect": "Unable to reach monitor.solenso.net.",
+      "station_not_found": "Station not found or not readable with this account. Check the station ID.",
+      "no_station": "No station found on this account. Enter the station ID manually.",
+      "unknown": "Unexpected error, see the logs."
+    },
+    "abort": {
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "Re-authentication successful."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power": { "name": "Power" },
+      "energy_today": { "name": "Energy today" },
+      "energy_month": { "name": "Energy this month" },
+      "energy_year": { "name": "Energy this year" },
+      "energy_total": { "name": "Total energy" },
+      "last_update": { "name": "Last data upload" }
+    }
+  }
+}
