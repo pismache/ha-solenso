@@ -69,7 +69,7 @@ Les mesures des onduleurs arrivent par pas de 15 minutes. Sans nouveau point dep
 
 ## Carte « Panneau solaire »
 
-L'intégration fournit sa propre carte, chargée automatiquement : rien à ajouter dans les ressources du tableau de bord.
+L'intégration fournit sa propre carte et l'ajoute elle-même aux ressources des tableaux de bord (Paramètres → Tableaux de bord → Ressources) : rien à installer en plus. Elle la retire si l'intégration est supprimée.
 
 Dans un tableau de bord : **Ajouter une carte** → chercher **Solenso**. Le panneau s'éclaire selon la production de chaque micro-onduleur ; un panneau sombre produit moins que les autres. Un clic sur un panneau, la puissance ou un chiffre de la plaque ouvre l'historique correspondant.
 

@@ -13,7 +13,7 @@ from .api import SolensoApi
 from .const import DOMAIN
 from .coordinator import SolensoConfigEntry, SolensoCoordinator
 from .entity import dtu_device, micro_device, station_device
-from .frontend import async_register_card
+from .frontend import async_register_card, async_unregister_card
 
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -73,3 +73,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolensoConfigEntry) -> b
 async def async_unload_entry(hass: HomeAssistant, entry: SolensoConfigEntry) -> bool:
     """Décharger une entrée de configuration."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: SolensoConfigEntry) -> None:
+    """À la suppression du dernier compte, retirer la ressource de la carte."""
+    if not any(e.entry_id != entry.entry_id for e in hass.config_entries.async_entries(DOMAIN)):
+        await async_unregister_card(hass)

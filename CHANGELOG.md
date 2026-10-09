@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 0.4.2 — 2026-10-09
+
+- La carte est ajoutée automatiquement aux **ressources** des tableaux de bord (comme le fait HACS) : elle reste disponible après un rechargement de page. Une ressource ajoutée à la main est reprise, sans doublon. Les tableaux de bord en YAML gardent l'ancien mode de chargement.
+- La ressource est retirée quand l'intégration est supprimée.
+
 ## 0.4.1 — 2026-10-09
 
 - La carte est déclarée dès le démarrage de Home Assistant, même si le cloud Solenso ne répond pas encore : plus d'« Erreur de configuration » à la place de la carte après un redémarrage.
