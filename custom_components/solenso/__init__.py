@@ -6,10 +6,13 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.loader import async_get_integration
 
 from .api import SolensoApi
+from .const import DOMAIN
 from .coordinator import SolensoConfigEntry, SolensoCoordinator
 from .entity import dtu_device, station_device
+from .frontend import async_register_card
 
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
@@ -41,6 +44,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolensoConfigEntry) -> b
             )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    integration = await async_get_integration(hass, DOMAIN)
+    await async_register_card(hass, str(integration.version))
     return True
 
 

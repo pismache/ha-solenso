@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 0.3.0 — 2026-10-09
+
+- Carte « Panneau solaire » livrée avec l'intégration et chargée automatiquement : un panneau par micro-onduleur, éclairé selon sa production, avec la puissance et une plaque jour / mois / total.
+- Éditeur visuel de la carte (centrale, colonnes, puissance crête, affichage des watts).
+
 ## 0.2.0 — 2026-10-09
 
 - Un appareil par micro-onduleur : puissance, production du jour, tension et courant panneau, température, tension et fréquence réseau, dernière remontée.

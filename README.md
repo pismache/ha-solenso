@@ -67,6 +67,23 @@ Les mesures des onduleurs arrivent par pas de 15 minutes. Sans nouveau point dep
 |---|---|
 | Connexion au cloud | la DTU communique-t-elle avec les serveurs ? |
 
+## Carte « Panneau solaire »
+
+L'intégration fournit sa propre carte, chargée automatiquement : rien à ajouter dans les ressources du tableau de bord.
+
+Dans un tableau de bord : **Ajouter une carte** → chercher **Solenso**. Le panneau s'éclaire selon la production de chaque micro-onduleur ; un panneau sombre produit moins que les autres. Un clic sur un panneau, la puissance ou un chiffre de la plaque ouvre l'historique correspondant.
+
+```yaml
+type: custom:solenso-card
+device_id: …          # la centrale (choisie dans l'éditeur visuel)
+columns: 8            # facultatif : panneaux par rangée
+peak_power: 350       # puissance crête d'un panneau, pour l'éclairage
+show_panels: true     # false : un seul grand panneau pour toute la centrale
+show_values: true     # watts affichés sur chaque panneau
+```
+
+Les panneaux sont rangés par nom d'appareil : renommer les micro-onduleurs (par exemple « Panneau 0-0 », « Panneau 0-1 »…) permet de reproduire la disposition réelle du toit.
+
 ## Tableau Énergie
 
 Dans Paramètres → Tableaux de bord → Énergie → **Production solaire**, choisir le capteur **Production totale** de la centrale, et sa **Puissance** pour la puissance instantanée.
