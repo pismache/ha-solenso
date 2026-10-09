@@ -11,7 +11,7 @@ from homeassistant.loader import async_get_integration
 from .api import SolensoApi
 from .const import DOMAIN
 from .coordinator import SolensoConfigEntry, SolensoCoordinator
-from .entity import dtu_device, station_device
+from .entity import dtu_device, micro_device, station_device
 from .frontend import async_register_card
 
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
@@ -26,22 +26,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolensoConfigEntry) -> b
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
 
-    # Enregistrer centrale puis DTU avant les onduleurs, qui s'y rattachent.
+    # Créer tous les appareils ici, puis les rattacher : centrale > DTU > onduleurs.
     registry = dr.async_get(hass)
+
+    def create(info, parent=None):
+        device = registry.async_get_or_create(config_entry_id=entry.entry_id, **info)
+        if parent is not None and device.via_device_id != parent.id:
+            device = registry.async_update_device(device.id, via_device_id=parent.id) or device
+        return device
+
     for station in coordinator.stations:
-        registry.async_get_or_create(config_entry_id=entry.entry_id, **station_device(station))
-        dtus = list(coordinator.data[station["id"]].dtus.values())
+        sid = station["id"]
+        station_dev = create(station_device(station))
+        dtus = list(coordinator.data[sid].dtus.values())
         known = {d.get("sn") for d in dtus}
         # DTU citées par les onduleurs mais absentes de la liste (appel en échec).
-        for micro in coordinator.micros.get(station["id"], []):
+        for micro in coordinator.micros.get(sid, []):
             sn = micro.get("dtu_sn")
             if sn and sn not in known:
                 known.add(sn)
                 dtus.append({"id": micro.get("dtu_id") or sn, "sn": sn})
-        for dtu in dtus:
-            registry.async_get_or_create(
-                config_entry_id=entry.entry_id, **dtu_device(station["id"], dtu)
-            )
+        dtu_devs = {d.get("sn"): create(dtu_device(sid, d), station_dev) for d in dtus}
+        for micro in coordinator.micros.get(sid, []):
+            create(micro_device(sid, micro), dtu_devs.get(micro.get("dtu_sn"), station_dev))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

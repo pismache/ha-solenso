@@ -29,7 +29,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import STALE_DATA_DELAY
 from .coordinator import MicroState, PortState, SolensoConfigEntry, SolensoCoordinator
-from .entity import micro_device, station_device
+from .entity import link_only, micro_device, station_device
 
 # --- Centrale ----------------------------------------------------------------
 
@@ -293,7 +293,7 @@ class _MicroEntity(CoordinatorEntity[SolensoCoordinator], SensorEntity):
         self._sid = sid
         self._micro_id: int = micro["id"]
         self._sn: str = micro.get("sn") or str(micro["id"])
-        self._attr_device_info = micro_device(sid, micro)
+        self._attr_device_info = link_only(micro_device(sid, micro))
 
     @property
     def _state(self) -> MicroState | None:

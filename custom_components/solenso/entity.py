@@ -30,13 +30,11 @@ def dtu_device(sid: int, dtu: dict[str, Any]) -> DeviceInfo:
         serial_number=sn,
         sw_version=dtu.get("init_soft_ver") or None,
         hw_version=dtu.get("init_hard_ver") or None,
-        via_device=(DOMAIN, str(sid)),
     )
 
 
 def micro_device(sid: int, micro: dict[str, Any]) -> DeviceInfo:
     sn = micro.get("sn") or str(micro["id"])
-    via = (DOMAIN, f"dtu_{micro['dtu_sn']}") if micro.get("dtu_sn") else (DOMAIN, str(sid))
     return DeviceInfo(
         identifiers={(DOMAIN, f"micro_{sn}")},
         name=f"Micro-onduleur {sn}",
@@ -45,5 +43,9 @@ def micro_device(sid: int, micro: dict[str, Any]) -> DeviceInfo:
         serial_number=sn,
         sw_version=micro.get("init_soft_ver") or None,
         hw_version=micro.get("init_hard_ver") or None,
-        via_device=via,
     )
+
+
+def link_only(info: DeviceInfo) -> DeviceInfo:
+    """DeviceInfo réduite aux identifiants : l'appareil est créé par __init__."""
+    return DeviceInfo(identifiers=info["identifiers"])

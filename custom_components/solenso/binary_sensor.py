@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import SolensoConfigEntry, SolensoCoordinator
-from .entity import dtu_device
+from .entity import dtu_device, link_only
 
 
 async def async_setup_entry(
@@ -44,7 +44,7 @@ class DtuConnectivity(CoordinatorEntity[SolensoCoordinator], BinarySensorEntity)
         self._dtu_id = dtu["id"]
         sn = dtu.get("sn") or str(dtu["id"])
         self._attr_unique_id = f"dtu_{sn}_connected"
-        self._attr_device_info = dtu_device(sid, dtu)
+        self._attr_device_info = link_only(dtu_device(sid, dtu))
 
     @property
     def _dtu(self) -> dict[str, Any] | None:
