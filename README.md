@@ -1,35 +1,54 @@
-# Solenso pour Home Assistant
+<p align="center">
+  <img src="custom_components/solenso/brand/icon@2x.png" alt="" width="128">
+</p>
 
-Intégration non officielle pour les centrales photovoltaïques **Solenso** suivies sur [monitor.solenso.net](https://monitor.solenso.net) (plateforme Hoymiles en marque blanche).
+<h1 align="center">Solenso pour Home Assistant</h1>
+
+<p align="center">
+  <a href="https://github.com/pismache/ha-solenso/releases"><img src="https://img.shields.io/github/v/release/pismache/ha-solenso?label=version" alt="Version"></a>
+  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-d%C3%A9p%C3%B4t%20personnalis%C3%A9-41BDF5" alt="HACS"></a>
+  <a href="https://github.com/pismache/ha-solenso/actions/workflows/validate.yml"><img src="https://github.com/pismache/ha-solenso/actions/workflows/validate.yml/badge.svg" alt="Validation"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/pismache/ha-solenso" alt="Licence"></a>
+</p>
+
+Intégration non officielle pour les centrales photovoltaïques **Solenso** suivies sur [monitor.solenso.net](https://monitor.solenso.net) : production de la centrale et détail de chaque micro-onduleur, directement dans Home Assistant et son tableau Énergie.
+
+> Solenso est une marque de micro-onduleurs basée sur la plateforme Hoymiles. Ce projet n'est ni affilié ni soutenu par Solenso ou Hoymiles.
 
 ## Installation
 
-**HACS** : HACS → menu ⋮ → Dépôts personnalisés → URL de ce dépôt, catégorie *Intégration* → installer « Solenso » → redémarrer.
+### Avec HACS (recommandé)
 
-**Manuelle** : copier le dossier `custom_components/solenso` dans `/config/custom_components/`, puis redémarrer Home Assistant.
+[![Ouvrir dans HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=pismache&repository=ha-solenso&category=integration)
+
+Ou à la main : HACS → menu ⋮ → **Dépôts personnalisés** → `https://github.com/pismache/ha-solenso`, catégorie **Intégration** → installer **Solenso** → redémarrer Home Assistant.
+
+### Manuelle
+
+Copier le dossier `custom_components/solenso` dans `/config/custom_components/`, puis redémarrer Home Assistant.
 
 ## Configuration
 
-Paramètres → Appareils et services → Ajouter une intégration → **Solenso**, puis saisir l'e-mail et le mot de passe du compte monitor.solenso.net.
+[![Ajouter l'intégration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=solenso)
 
-Les centrales du compte sont détectées automatiquement. Si ce n'est pas le cas, renseigner l'**identifiant de la centrale** : c'est le nombre après `id=` dans l'adresse de sa page (`.../station/view/detail?id=1234567`).
+Paramètres → Appareils et services → **Ajouter une intégration** → **Solenso**, puis l'e-mail et le mot de passe du compte monitor.solenso.net.
 
-## Capteurs
+Les centrales du compte sont détectées automatiquement. Sinon, renseigner l'**identifiant de la centrale** : c'est le nombre après `id=` dans l'adresse de sa page (`…/station/view/detail?id=1234567`).
 
-Pour chaque centrale :
+## Ce que vous obtenez
+
+Les appareils sont organisés comme l'installation : **centrale → passerelle DTU → micro-onduleurs**.
+
+### Centrale
 
 | Capteur | Unité | Remarque |
 |---|---|---|
-| Puissance | W | forcée à 0 si aucune remontée depuis 1 h (la nuit) |
-| Production du jour | kWh | |
-| Production du mois | kWh | |
-| Production de l'année | kWh | |
+| Puissance | W | forcée à 0 sans remontée depuis 1 h (la nuit) |
+| Production du jour / du mois / de l'année | kWh | |
 | Production totale | kWh | **à utiliser dans le tableau Énergie** |
 | Dernière remontée | horodatage | diagnostic |
 
 ### Micro-onduleurs
-
-Chaque micro-onduleur devient un appareil (rattaché à sa passerelle DTU, elle-même rattachée à la centrale), avec :
 
 | Capteur | Unité | Remarque |
 |---|---|---|
@@ -37,15 +56,34 @@ Chaque micro-onduleur devient un appareil (rattaché à sa passerelle DTU, elle-
 | Production du jour | kWh | |
 | Tension panneau / Courant panneau | V / A | par entrée PV si l'onduleur en a plusieurs |
 | Température | °C | |
-| Tension réseau, Fréquence réseau | V, Hz | diagnostic |
+| Tension réseau / Fréquence réseau | V / Hz | diagnostic |
 | Dernière remontée | horodatage | diagnostic |
 
-Les mesures arrivent par pas de 15 minutes. Sans nouveau point depuis 45 minutes (la nuit), puissance, tension et courant passent à 0 et la température devient inconnue ; la production du jour reste acquise jusqu'à minuit.
+Les mesures des onduleurs arrivent par pas de 15 minutes. Sans nouveau point depuis 45 minutes (la nuit), puissance, tension et courant passent à 0 et la température devient inconnue ; la production du jour reste acquise jusqu'à minuit.
 
-La passerelle DTU expose un capteur **Connexion au cloud**.
+### Passerelle DTU
 
-Mise à jour toutes les 5 minutes. Le cloud Solenso ne recalcule les cumuls mois/année/total qu'en différé ; la production du jour et la puissance sont plus réactives.
+| Capteur | Remarque |
+|---|---|
+| Connexion au cloud | la DTU communique-t-elle avec les serveurs ? |
+
+## Tableau Énergie
+
+Dans Paramètres → Tableaux de bord → Énergie → **Production solaire**, choisir le capteur **Production totale** de la centrale, et sa **Puissance** pour la puissance instantanée.
+
+Le cloud Solenso ne recalcule les cumuls mois / année / total qu'en différé ; la puissance et la production du jour sont plus réactives.
 
 ## Fonctionnement
 
-L'intégration se connecte comme la page web (mot de passe envoyé haché, jamais en clair), garde le jeton de session et se reconnecte d'elle-même quand il expire. Si le mot de passe change, Home Assistant propose de le ressaisir.
+- Données lues dans le cloud toutes les 5 minutes (pas d'accès local à la DTU).
+- Connexion comme la page web : le mot de passe est envoyé haché, jamais en clair. Le jeton de session est renouvelé automatiquement ; si le mot de passe change, Home Assistant propose de le ressaisir.
+- Les données par onduleur viennent de l'API Hoymiles utilisée par la page « Agencement » de monitor.solenso.net (réponse protobuf décodée dans `module_pb.py`).
+
+## Développement
+
+```bash
+pip install -r requirements-test.txt
+pytest
+```
+
+Les versions sont listées dans le [journal des versions](CHANGELOG.md).
