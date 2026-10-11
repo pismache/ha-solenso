@@ -50,6 +50,9 @@
       "energy_total": {
         "name": "Production totale"
       },
+      "energy_production": {
+        "name": "Production cumulée"
+      },
       "last_update": {
         "name": "Dernière remontée"
       },

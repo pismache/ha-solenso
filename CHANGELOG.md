@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 0.5.0 — 2026-10-11
+
+- Nouveau capteur **Production cumulée** pour le tableau Énergie : il suit la production heure par heure, au lieu de la « Production totale » que le cloud ne recalcule qu'une fois par nuit (toute la production de la veille apparaissait d'un bloc vers 2 h). Compteur toujours croissant, sans à-coup à minuit, qui rattrape la production manquée pendant un redémarrage ou une coupure du cloud.
+- README : le tableau Énergie doit désormais utiliser la Production cumulée.
+
 ## 0.4.2 — 2026-10-09
 
 - La carte est ajoutée automatiquement aux **ressources** des tableaux de bord (comme le fait HACS) : elle reste disponible après un rechargement de page. Une ressource ajoutée à la main est reprise, sans doublon. Les tableaux de bord en YAML gardent l'ancien mode de chargement.

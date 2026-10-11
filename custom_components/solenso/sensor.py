@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -24,6 +24,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
@@ -104,6 +105,128 @@ SENSORS: tuple[SolensoSensorDescription, ...] = (
         value_fn=_last_update,
     ),
 )
+
+# --- Compteur pour le tableau Énergie ----------------------------------------
+#
+# Le cloud ne recalcule les totaux (mois, année, total) qu'une fois par nuit :
+# branchés sur le tableau Énergie, ils font apparaître toute la production de la
+# veille d'un coup, vers 2 h du matin. La production du jour, elle, suit les
+# remontées des onduleurs tout au long de la journée. Ce compteur additionne ses
+# hausses successives : il ne fait que monter, passe minuit sans à-coup et
+# rattrape ce qui a été produit pendant un redémarrage ou une coupure du cloud.
+
+
+@dataclass
+class Counter:
+    """État du compteur : total cumulé et dernière production du jour vue."""
+
+    total: float | None = None
+    last_today: float = 0.0
+    last_day: date | None = None
+
+
+def accumulate(counter: Counter, today: float | None, day: date | None) -> Counter:
+    """Ajouter au total ce que la production du jour a gagné depuis la dernière lecture."""
+    if today is None or day is None or today < 0:
+        return counter
+    if counter.total is None or counter.last_day is None:
+        # Première lecture : point de départ, rien n'est compté en double.
+        total = counter.total if counter.total is not None else today
+        return Counter(total, today, day)
+    if day == counter.last_day:
+        if today > counter.last_today:
+            return Counter(counter.total + today - counter.last_today, today, day)
+        # Baisse passagère ou correction du cloud : on attend qu'il dépasse l'ancien maximum.
+        return counter
+    if day > counter.last_day:
+        if today == counter.last_today and today > 0:
+            # Nouvelle journée mais valeur de la veille pas encore remise à zéro.
+            return counter
+        return Counter(counter.total + today, today, day)
+    return counter
+
+
+@dataclass
+class CounterStoredData(ExtraStoredData):
+    """Ce qu'il faut garder d'un redémarrage à l'autre."""
+
+    counter: Counter
+
+    def as_dict(self) -> dict[str, Any]:
+        c = self.counter
+        return {
+            "total": c.total,
+            "last_today": c.last_today,
+            "last_day": c.last_day.isoformat() if c.last_day else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CounterStoredData | None:
+        try:
+            total = data.get("total")
+            last_day = data.get("last_day")
+            return cls(
+                Counter(
+                    float(total) if total is not None else None,
+                    float(data.get("last_today") or 0.0),
+                    date.fromisoformat(last_day) if last_day else None,
+                )
+            )
+        except (TypeError, ValueError):
+            return None
+
+
+class SolensoProductionCounter(CoordinatorEntity[SolensoCoordinator], SensorEntity, RestoreEntity):
+    """Production cumulée, mise à jour au fil de la journée (pour le tableau Énergie)."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "energy_production"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
+    _attr_suggested_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator: SolensoCoordinator, station: dict[str, Any]) -> None:
+        super().__init__(coordinator)
+        self._sid: int = station["id"]
+        self._attr_unique_id = f"{self._sid}_energy_production"
+        self._attr_device_info = station_device(station)
+        self._counter = Counter()
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if (extra := await self.async_get_last_extra_data()) is not None:
+            if (stored := CounterStoredData.from_dict(extra.as_dict())) is not None:
+                self._counter = stored.counter
+        self._update_counter()
+
+    @property
+    def extra_restore_state_data(self) -> CounterStoredData:
+        return CounterStoredData(self._counter)
+
+    def _update_counter(self) -> None:
+        station = (self.coordinator.data or {}).get(self._sid)
+        if station is None:
+            return
+        last = _last_update(station.real)
+        self._counter = accumulate(
+            self._counter, _float(station.real, "today_eq"), last.date() if last else None
+        )
+
+    def _handle_coordinator_update(self) -> None:
+        self._update_counter()
+        super()._handle_coordinator_update()
+
+    @property
+    def available(self) -> bool:
+        return self._counter.total is not None
+
+    @property
+    def native_value(self) -> float | None:
+        total = self._counter.total
+        return None if total is None else round(total, 1)
+
 
 # --- Micro-onduleurs ---------------------------------------------------------
 
@@ -242,6 +365,7 @@ async def async_setup_entry(
     for station in coordinator.stations:
         sid = station["id"]
         entities.extend(SolensoSensor(coordinator, station, d) for d in SENSORS)
+        entities.append(SolensoProductionCounter(coordinator, station))
         for micro in coordinator.micros.get(sid, []):
             entities.extend(MicroSensor(coordinator, sid, micro, d) for d in MICRO_SENSORS)
             ports = _ports(micro)

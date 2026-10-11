@@ -45,7 +45,8 @@ Les appareils sont organisés comme l'installation : **centrale → passerelle D
 |---|---|---|
 | Puissance | W | forcée à 0 sans remontée depuis 1 h (la nuit) |
 | Production du jour / du mois / de l'année | kWh | |
-| Production totale | kWh | **à utiliser dans le tableau Énergie** |
+| Production totale | kWh | recalculée par le cloud une fois par nuit |
+| Production cumulée | kWh | **à utiliser dans le tableau Énergie** : suit la production heure par heure |
 | Dernière remontée | horodatage | diagnostic |
 
 ### Micro-onduleurs
@@ -86,9 +87,11 @@ Les panneaux sont placés **comme sur le toit**, d'après la page « Agencement 
 
 ## Tableau Énergie
 
-Dans Paramètres → Tableaux de bord → Énergie → **Production solaire**, choisir le capteur **Production totale** de la centrale, et sa **Puissance** pour la puissance instantanée.
+Dans Paramètres → Tableaux de bord → Énergie → **Production solaire**, choisir le capteur **Production cumulée** de la centrale, et sa **Puissance** pour la puissance instantanée.
 
-Le cloud Solenso ne recalcule les cumuls mois / année / total qu'en différé ; la puissance et la production du jour sont plus réactives.
+Pourquoi pas « Production totale » ? Le cloud Solenso ne recalcule les cumuls mois / année / total qu'une fois par nuit : branché sur le tableau Énergie, ce capteur fait apparaître toute la production de la veille d'un seul coup, vers 2 h du matin. La **Production cumulée** additionne les hausses de la production du jour au fil des remontées des onduleurs : le graphique montre la production heure par heure. Le compteur ne fait que monter, passe minuit sans à-coup et, après un redémarrage de Home Assistant ou une coupure du cloud, rattrape ce qui a été produit entre-temps (dans la même journée).
+
+En remplaçant le capteur dans le tableau Énergie, l'historique déjà enregistré reste tel quel ; la nouvelle répartition horaire vaut à partir du changement.
 
 ## Fonctionnement
 

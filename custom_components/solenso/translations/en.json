@@ -50,6 +50,9 @@
       "energy_total": {
         "name": "Total energy"
       },
+      "energy_production": {
+        "name": "Energy produced"
+      },
       "last_update": {
         "name": "Last data upload"
       },
