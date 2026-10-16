@@ -3,25 +3,29 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.sun import get_astral_location
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .api import SolensoApi, SolensoAuthError, SolensoError
 from .const import (
     CONF_STATIONS,
+    DAYLIGHT_ELEVATION,
     DEFAULT_SCAN_INTERVAL,
     DEVICES_REFRESH_INTERVAL,
     DOMAIN,
     MICRO_STALE_DELAY,
+    PREVIOUS_DAY_REFRESH_INTERVAL,
 )
 from .module_pb import MicroDay
+from .statistics import ProductionStatistics
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +69,10 @@ class StationData:
     real: dict[str, Any]
     micros: dict[int, MicroState] = field(default_factory=dict)
     dtus: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # Soleil assez haut pour que les panneaux produisent : une donnée figée est alors suspecte.
+    daylight: bool = False
+    # Mesures par onduleur du jour et de la veille ({jour: {id onduleur: série}}).
+    days: dict[date, dict[int, MicroDay]] = field(default_factory=dict)
 
 
 def _last(values: list[float], index: int) -> float | None:
@@ -106,6 +114,16 @@ def micro_state(day: MicroDay | None, day_date: date, now: datetime) -> MicroSta
     )
 
 
+def is_daylight(hass: HomeAssistant, when: datetime) -> bool:
+    """Le soleil est-il assez haut pour que les panneaux produisent ?"""
+    try:
+        location, elevation = get_astral_location(hass)
+        return location.solar_elevation(when, elevation) > DAYLIGHT_ELEVATION
+    except (ValueError, TypeError) as err:  # emplacement de Home Assistant non configuré
+        _LOGGER.debug("Hauteur du soleil incalculable : %s", err)
+        return False
+
+
 def _positions(items: list[dict[str, Any]]) -> dict[int, dict[str, int]]:
     """Première position connue de chaque onduleur (le port 1 pour un onduleur à plusieurs entrées)."""
     positions: dict[int, dict[str, int]] = {}
@@ -139,6 +157,10 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
         self.layout: dict[int, dict[int, dict[str, int]]] = {}
         self._micros_fetched_at: datetime | None = None
         self._module_warned = False
+        # Dernière relecture de la veille : {sid: (jour, mesures, lue à)}
+        self._previous_cache: dict[int, tuple[date, dict[int, MicroDay], datetime]] = {}
+        # Production horaire dans les statistiques (tableau Énergie), une par centrale.
+        self.statistics = {s["id"]: ProductionStatistics(hass, api, s) for s in self.stations}
 
     async def _refresh_inventory(self) -> None:
         now = dt_util.utcnow()
@@ -161,8 +183,28 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
                 self.layout.setdefault(station["id"], {})
         self._micros_fetched_at = now
 
+    async def _previous_day(self, sid: int, today: date) -> tuple[date, dict[int, MicroDay]] | None:
+        """Mesures de la veille, relues de temps en temps (la DTU peut les envoyer en différé)."""
+        yesterday = today - timedelta(days=1)
+        now = dt_util.utcnow()
+        cached = self._previous_cache.get(sid)
+        if cached and cached[0] == yesterday and now - cached[2] < PREVIOUS_DAY_REFRESH_INTERVAL:
+            return cached[0], cached[1]
+        try:
+            days = await self.api.get_module_day_data(sid, yesterday.isoformat())
+        except SolensoAuthError:
+            raise
+        except SolensoError as err:
+            _LOGGER.debug("Mesures de la veille indisponibles : %s", err)
+            return (cached[0], cached[1]) if cached and cached[0] == yesterday else None
+        self._previous_cache[sid] = (yesterday, days, now)
+        return yesterday, days
+
     async def _station(self, sid: int, previous: StationData | None) -> StationData:
-        station = StationData(real=await self.api.get_station_real_data(sid))
+        now = dt_util.now()
+        station = StationData(
+            real=await self.api.get_station_real_data(sid), daylight=is_daylight(self.hass, now)
+        )
 
         try:
             station.dtus = {d["id"]: d for d in await self.api.get_dtus(sid) if "id" in d}
@@ -174,7 +216,6 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
 
         if not self.micros.get(sid):
             return station
-        now = dt_util.now()
         try:
             days = await self.api.get_module_day_data(sid, now.date().isoformat())
         except SolensoAuthError:
@@ -186,6 +227,9 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
             station.micros = previous.micros if previous else {}
             return station
         self._module_warned = False
+        station.days[now.date()] = days
+        if (prev := await self._previous_day(sid, now.date())) is not None:
+            station.days[prev[0]] = prev[1]
         station.micros = {
             micro["id"]: micro_state(days.get(micro["id"]), now.date(), now)
             for micro in self.micros[sid]
@@ -203,4 +247,16 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
             raise ConfigEntryAuthFailed(str(err)) from err
         except SolensoError as err:
             raise UpdateFailed(str(err)) from err
+        for sid, station in data.items():
+            if not station.days:
+                continue
+            try:
+                await self.statistics[sid].async_update(station.days)
+            except SolensoAuthError as err:
+                raise ConfigEntryAuthFailed(str(err)) from err
+            except SolensoError as err:
+                # Les capteurs restent à jour ; les statistiques seront réécrites au prochain passage.
+                _LOGGER.debug("Statistiques de production non mises à jour : %s", err)
+            except Exception:  # noqa: BLE001 - une erreur de la base ne doit pas couper les capteurs
+                _LOGGER.exception("Échec de l'écriture des statistiques de production")
         return data

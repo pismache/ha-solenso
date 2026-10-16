@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 0.6.0 — 2026-10-16
+
+- **Statistique de production heure par heure pour le tableau Énergie** (`solenso:production_<centrale>`), calculée d'après les mesures par onduleur du cloud. Quand la passerelle DTU renvoie ses mesures en différé après une coupure Internet, les deux dernières journées sont réécrites : l'énergie s'inscrit à l'heure où elle a été produite. Au premier lancement, l'historique conservé par le cloud est repris (au plus un an). À sélectionner à la place de la Production cumulée dans le tableau Énergie.
+- **Plus de faux 0 W en plein jour.** Quand les remontées s'arrêtent alors que le soleil est haut (plus de 10°), la puissance de la centrale et les mesures instantanées des onduleurs (puissance, tension et courant panneau) passent indisponibles au lieu de 0. La nuit, elles restent à 0 comme avant.
+- Home Assistant 2026.1 minimum.
+
 ## 0.5.0 — 2026-10-11
 
 - Nouveau capteur **Production cumulée** pour le tableau Énergie : il suit la production heure par heure, au lieu de la « Production totale » que le cloud ne recalcule qu'une fois par nuit (toute la production de la veille apparaissait d'un bloc vers 2 h). Compteur toujours croissant, sans à-coup à minuit, qui rattrape la production manquée pendant un redémarrage ou une coupure du cloud.

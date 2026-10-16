@@ -43,7 +43,7 @@ Les appareils sont organisés comme l'installation : **centrale → passerelle D
 
 | Capteur | Unité | Remarque |
 |---|---|---|
-| Puissance | W | forcée à 0 sans remontée depuis 1 h (la nuit) |
+| Puissance | W | 0 sans remontée depuis 1 h la nuit ; **indisponible** si les remontées s'arrêtent en plein jour |
 | Production du jour / du mois / de l'année | kWh | |
 | Production totale | kWh | recalculée par le cloud une fois par nuit |
 | Production cumulée | kWh | **à utiliser dans le tableau Énergie** : suit la production heure par heure |
@@ -60,7 +60,7 @@ Les appareils sont organisés comme l'installation : **centrale → passerelle D
 | Tension réseau / Fréquence réseau | V / Hz | diagnostic |
 | Dernière remontée | horodatage | diagnostic |
 
-Les mesures des onduleurs arrivent par pas de 15 minutes. Sans nouveau point depuis 45 minutes (la nuit), puissance, tension et courant passent à 0 et la température devient inconnue ; la production du jour reste acquise jusqu'à minuit.
+Les mesures des onduleurs arrivent par pas de 15 minutes. Sans nouveau point depuis 45 minutes, puissance, tension et courant passent à 0 la nuit, mais deviennent **indisponibles** en plein jour (soleil à plus de 10° au-dessus de l'horizon) : un onduleur muet sous le soleil signale une coupure, pas une production nulle. La température devient inconnue ; la production du jour reste acquise jusqu'à minuit.
 
 ### Passerelle DTU
 
@@ -87,11 +87,15 @@ Les panneaux sont placés **comme sur le toit**, d'après la page « Agencement 
 
 ## Tableau Énergie
 
-Dans Paramètres → Tableaux de bord → Énergie → **Production solaire**, choisir le capteur **Production cumulée** de la centrale, et sa **Puissance** pour la puissance instantanée.
+Dans Paramètres → Tableaux de bord → Énergie → **Production solaire**, choisir la statistique **« <centrale> Production »** (identifiant `solenso:production_<n° de centrale>`), et la **Puissance** de la centrale pour la puissance instantanée.
 
-Pourquoi pas « Production totale » ? Le cloud Solenso ne recalcule les cumuls mois / année / total qu'une fois par nuit : branché sur le tableau Énergie, ce capteur fait apparaître toute la production de la veille d'un seul coup, vers 2 h du matin. La **Production cumulée** additionne les hausses de la production du jour au fil des remontées des onduleurs : le graphique montre la production heure par heure. Le compteur ne fait que monter, passe minuit sans à-coup et, après un redémarrage de Home Assistant ou une coupure du cloud, rattrape ce qui a été produit entre-temps (dans la même journée).
+Cette statistique est écrite heure par heure par l'intégration, comme le fait l'add-on Linky pour le compteur, à partir des mesures par onduleur que le cloud garde par pas de 15 minutes :
 
-En remplaçant le capteur dans le tableau Énergie, l'historique déjà enregistré reste tel quel ; la nouvelle répartition horaire vaut à partir du changement.
+- **Données en retard.** Si la passerelle DTU perd Internet, elle garde ses mesures et les renvoie plus tard. L'intégration relit la veille toutes les heures et réécrit les deux dernières journées : l'énergie arrivée en différé s'inscrit à l'heure où elle a été produite, et l'autoconsommation reste juste.
+- **Historique.** Au premier lancement, l'historique conservé par le cloud est repris jour par jour (au plus un an, à raison d'une requête par seconde). Le journal indique la date de départ : « Historique de production repris depuis le … ».
+- **Arrêt de Home Assistant.** Au redémarrage, les journées manquées sont relues (jusqu'à 31 jours).
+
+Le capteur **Production cumulée** reste disponible, mais ne peut pas corriger le passé : après une coupure de la DTU, il manque la production arrivée en différé. La statistique le remplace dans le tableau Énergie.
 
 ## Fonctionnement
 
