@@ -118,3 +118,43 @@ async def test_daylight_follows_the_sun(hass: HomeAssistant):
     assert real_is_daylight(hass, datetime(2026, 10, 15, 14, 0, tzinfo=tz))
     assert not real_is_daylight(hass, datetime(2026, 10, 15, 23, 0, tzinfo=tz))
     assert not real_is_daylight(hass, datetime(2026, 10, 15, 8, 30, tzinfo=tz))  # soleil encore trop bas
+
+
+async def test_inverter_list_failing_at_startup_is_retried_then_reloads(
+    hass: HomeAssistant, aioclient_mock
+):
+    # Au démarrage, panne DNS sur l'API Hoymiles : la centrale démarre sans onduleurs.
+    today = dt_util.now().date().isoformat()
+    aioclient_mock.post(LOGIN, json={"status": "0", "data": {"token": "tok"}})
+    aioclient_mock.post(LAYOUT, json={"status": "0", "data": []})
+    aioclient_mock.post(REAL, json=_real(2000, 3))
+    aioclient_mock.post(MICROS, status=500)
+    aioclient_mock.post(DTUS, json=DTU_LIST)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get(POWER) is not None
+    assert hass.states.get(MICRO_POWER) is None
+
+    # Cinq minutes plus tard, la liste revient : rechargement, les capteurs d'onduleur apparaissent.
+    await _setup_mocks_only(aioclient_mock, _real(2000, 3), {today: _day(slots(2, 5), 100.0, 100.0)})
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    assert float(hass.states.get(MICRO_POWER).state) == 150.0
+
+
+async def _setup_mocks_only(aioclient_mock, real: dict, by_date: dict[str, bytes]):
+    async def module(method, url, data):
+        return AiohttpClientMockResponse(
+            method, url, response=by_date.get(data["date"], b""),
+            headers={"Content-Type": "application/octet-stream"},
+        )
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(LOGIN, json={"status": "0", "data": {"token": "tok"}})
+    aioclient_mock.post(LAYOUT, json={"status": "0", "data": []})
+    aioclient_mock.post(REAL, json=real)
+    aioclient_mock.post(MICROS, json=MICRO_LIST)
+    aioclient_mock.post(DTUS, json=DTU_LIST)
+    aioclient_mock.post(MODULE, side_effect=module)

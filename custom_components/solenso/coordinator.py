@@ -7,10 +7,11 @@ from datetime import date, datetime, time, timedelta
 import logging
 from typing import Any
 
+from astral import Observer
+from astral.sun import elevation as solar_elevation
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.sun import get_astral_location
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -117,8 +118,8 @@ def micro_state(day: MicroDay | None, day_date: date, now: datetime) -> MicroSta
 def is_daylight(hass: HomeAssistant, when: datetime) -> bool:
     """Le soleil est-il assez haut pour que les panneaux produisent ?"""
     try:
-        location, elevation = get_astral_location(hass)
-        return location.solar_elevation(when, elevation) > DAYLIGHT_ELEVATION
+        observer = Observer(hass.config.latitude, hass.config.longitude, hass.config.elevation or 0)
+        return solar_elevation(observer, when) > DAYLIGHT_ELEVATION
     except (ValueError, TypeError) as err:  # emplacement de Home Assistant non configuré
         _LOGGER.debug("Hauteur du soleil incalculable : %s", err)
         return False
@@ -166,14 +167,24 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
         now = dt_util.utcnow()
         if self._micros_fetched_at and now - self._micros_fetched_at < DEVICES_REFRESH_INTERVAL:
             return
+        complete = True
         for station in self.stations:
+            sid = station["id"]
             try:
-                self.micros[station["id"]] = await self.api.get_micros(station["id"])
+                micros = await self.api.get_micros(sid)
             except SolensoAuthError:
                 raise
             except SolensoError as err:
+                # Retentée au prochain passage, pas dans 6 h : sans elle, aucune mesure par onduleur.
                 _LOGGER.warning("Liste des micro-onduleurs indisponible : %s", err)
-                self.micros.setdefault(station["id"], [])
+                self.micros.setdefault(sid, [])
+                complete = False
+            else:
+                if micros and not self.micros.get(sid) and self.data is not None:
+                    # Onduleurs découverts après le démarrage : recharger pour créer leurs capteurs.
+                    _LOGGER.info("Micro-onduleurs disponibles, rechargement de l'intégration")
+                    self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
+                self.micros[sid] = micros
             try:
                 self.layout[station["id"]] = _positions(await self.api.get_layout(station["id"]))
             except SolensoAuthError:
@@ -181,7 +192,8 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
             except SolensoError as err:
                 _LOGGER.debug("Disposition des panneaux indisponible : %s", err)
                 self.layout.setdefault(station["id"], {})
-        self._micros_fetched_at = now
+        if complete:
+            self._micros_fetched_at = now
 
     async def _previous_day(self, sid: int, today: date) -> tuple[date, dict[int, MicroDay]] | None:
         """Mesures de la veille, relues de temps en temps (la DTU peut les envoyer en différé)."""

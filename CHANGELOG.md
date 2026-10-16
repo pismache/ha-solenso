@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 0.6.1 — 2026-10-16
+
+- Si la liste des micro-onduleurs est injoignable au démarrage (panne DNS, cloud lent), elle est retentée toutes les 5 minutes au lieu de 6 heures, et l'intégration se recharge d'elle-même dès qu'elle arrive : les capteurs d'onduleur et la statistique de production ne restent plus bloqués jusqu'au soir.
+- Hauteur du soleil calculée sans la fonction dépréciée de Home Assistant (retirée en 2027.7).
+
 ## 0.6.0 — 2026-10-16
 
 - **Statistique de production heure par heure pour le tableau Énergie** (`solenso:production_<centrale>`), calculée d'après les mesures par onduleur du cloud. Quand la passerelle DTU renvoie ses mesures en différé après une coupure Internet, les deux dernières journées sont réécrites : l'énergie s'inscrit à l'heure où elle a été produite. Au premier lancement, l'historique conservé par le cloud est repris (au plus un an). À sélectionner à la place de la Production cumulée dans le tableau Énergie.
