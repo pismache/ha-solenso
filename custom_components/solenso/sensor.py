@@ -28,8 +28,14 @@ from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import STALE_DATA_DELAY
-from .coordinator import MicroState, PortState, SolensoConfigEntry, SolensoCoordinator
+from .const import CATCH_UP_MIN_WH, STALE_DATA_DELAY
+from .coordinator import (
+    MicroState,
+    PortState,
+    SolensoConfigEntry,
+    SolensoCoordinator,
+    StationData,
+)
 from .entity import link_only, micro_device, station_device
 
 # --- Centrale ----------------------------------------------------------------
@@ -55,10 +61,15 @@ def _last_update(data: dict[str, Any]) -> datetime | None:
     return parsed
 
 
-def _power(data: dict[str, Any]) -> float | None:
-    """Puissance instantanée, forcée à 0 quand la dernière remontée est trop ancienne."""
+def _is_stale(data: dict[str, Any]) -> bool:
+    """La dernière remontée de la centrale est-elle trop ancienne ?"""
     last = _last_update(data)
-    if last is not None and dt_util.now() - last > STALE_DATA_DELAY:
+    return last is not None and dt_util.now() - last > STALE_DATA_DELAY
+
+
+def _power(data: dict[str, Any]) -> float | None:
+    """Puissance instantanée, nulle quand la dernière remontée est trop ancienne (la nuit)."""
+    if _is_stale(data):
         return 0.0
     return _float(data, "real_power")
 
@@ -68,6 +79,8 @@ class SolensoSensorDescription(SensorEntityDescription):
     """Description d'un capteur de centrale."""
 
     value_fn: Callable[[dict[str, Any]], Any]
+    # Mesure instantanée : indisponible en plein jour quand les remontées sont figées.
+    live: bool = False
 
 
 def _energy(key: str, translation_key: str, precision: int) -> SolensoSensorDescription:
@@ -92,6 +105,7 @@ SENSORS: tuple[SolensoSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
         value_fn=_power,
+        live=True,
     ),
     _energy("today_eq", "energy_today", 2),
     _energy("month_eq", "energy_month", 1),
@@ -123,6 +137,9 @@ class Counter:
     total: float | None = None
     last_today: float = 0.0
     last_day: date | None = None
+    # Veille, gardée pour rattraper les mesures que la DTU envoie en différé.
+    prev_day: date | None = None
+    prev_max: float = 0.0
 
 
 def accumulate(counter: Counter, today: float | None, day: date | None) -> Counter:
@@ -142,7 +159,22 @@ def accumulate(counter: Counter, today: float | None, day: date | None) -> Count
         if today == counter.last_today and today > 0:
             # Nouvelle journée mais valeur de la veille pas encore remise à zéro.
             return counter
-        return Counter(counter.total + today, today, day)
+        return Counter(counter.total + today, today, day, counter.last_day, counter.last_today)
+    return counter
+
+
+def catch_up(counter: Counter, day: date, energy: float) -> Counter:
+    """Ajouter l'énergie d'un jour déjà compté qui a augmenté après coup (mesures en différé)."""
+    if counter.total is None or counter.last_day is None:
+        return counter
+    if day == counter.last_day and energy - counter.last_today >= CATCH_UP_MIN_WH:
+        return Counter(
+            counter.total + energy - counter.last_today, energy, day, counter.prev_day, counter.prev_max
+        )
+    if day == counter.prev_day and energy - counter.prev_max >= CATCH_UP_MIN_WH:
+        return Counter(
+            counter.total + energy - counter.prev_max, counter.last_today, counter.last_day, day, energy
+        )
     return counter
 
 
@@ -158,6 +190,8 @@ class CounterStoredData(ExtraStoredData):
             "total": c.total,
             "last_today": c.last_today,
             "last_day": c.last_day.isoformat() if c.last_day else None,
+            "prev_day": c.prev_day.isoformat() if c.prev_day else None,
+            "prev_max": c.prev_max,
         }
 
     @classmethod
@@ -165,11 +199,14 @@ class CounterStoredData(ExtraStoredData):
         try:
             total = data.get("total")
             last_day = data.get("last_day")
+            prev_day = data.get("prev_day")
             return cls(
                 Counter(
                     float(total) if total is not None else None,
                     float(data.get("last_today") or 0.0),
                     date.fromisoformat(last_day) if last_day else None,
+                    date.fromisoformat(prev_day) if prev_day else None,
+                    float(data.get("prev_max") or 0.0),
                 )
             )
         except (TypeError, ValueError):
@@ -210,9 +247,13 @@ class SolensoProductionCounter(CoordinatorEntity[SolensoCoordinator], SensorEnti
         if station is None:
             return
         last = _last_update(station.real)
-        self._counter = accumulate(
+        counter = accumulate(
             self._counter, _float(station.real, "today_eq"), last.date() if last else None
         )
+        # Les mesures par onduleur peuvent être plus complètes (envoi différé de la DTU).
+        for day, energy in sorted(station.day_energy.items()):
+            counter = catch_up(counter, day, energy)
+        self._counter = counter
 
     def _handle_coordinator_update(self) -> None:
         self._update_counter()
@@ -236,6 +277,7 @@ class MicroSensorDescription(SensorEntityDescription):
     """Description d'un capteur de micro-onduleur."""
 
     value_fn: Callable[[MicroState], Any]
+    live: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -243,6 +285,7 @@ class PortSensorDescription(SensorEntityDescription):
     """Description d'un capteur par entrée PV."""
 
     value_fn: Callable[[PortState], Any]
+    live: bool = True
 
 
 MICRO_SENSORS: tuple[MicroSensorDescription, ...] = (
@@ -254,6 +297,7 @@ MICRO_SENSORS: tuple[MicroSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
         value_fn=lambda m: m.power,
+        live=True,
     ),
     MicroSensorDescription(
         key="energy_today",
@@ -343,6 +387,7 @@ MULTI_PORT_SENSORS: tuple[PortSensorDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         suggested_display_precision=3,
         value_fn=lambda p: p.energy,
+        live=False,
     ),
 )
 
@@ -395,13 +440,21 @@ class SolensoSensor(CoordinatorEntity[SolensoCoordinator], SensorEntity):
         self._attr_device_info = station_device(station)
 
     @property
+    def _station(self) -> StationData | None:
+        return (self.coordinator.data or {}).get(self._sid)
+
+    @property
     def _data(self) -> dict[str, Any] | None:
-        station = (self.coordinator.data or {}).get(self._sid)
+        station = self._station
         return station.real if station else None
 
     @property
     def available(self) -> bool:
-        return super().available and self._data is not None
+        station = self._station
+        if not super().available or station is None:
+            return False
+        # En plein jour, une puissance figée n'est pas une puissance nulle.
+        return not (self.entity_description.live and station.daylight and _is_stale(station.real))
 
     @property
     def native_value(self) -> Any:
@@ -426,7 +479,13 @@ class _MicroEntity(CoordinatorEntity[SolensoCoordinator], SensorEntity):
 
     @property
     def available(self) -> bool:
-        return super().available and self._state is not None
+        state = self._state
+        if not super().available or state is None:
+            return False
+        # Onduleur muet alors que le soleil est haut : mesure inconnue, pas zéro.
+        station = (self.coordinator.data or {}).get(self._sid)
+        live = getattr(self.entity_description, "live", False)
+        return not (live and state.asleep and station is not None and station.daylight)
 
 
 class MicroSensor(_MicroEntity):

@@ -3,23 +3,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.sun import get_astral_location
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .api import SolensoApi, SolensoAuthError, SolensoError
 from .const import (
     CONF_STATIONS,
+    DAYLIGHT_ELEVATION,
     DEFAULT_SCAN_INTERVAL,
     DEVICES_REFRESH_INTERVAL,
     DOMAIN,
     MICRO_STALE_DELAY,
+    PREVIOUS_DAY_REFRESH_INTERVAL,
 )
 from .module_pb import MicroDay
 
@@ -65,6 +68,10 @@ class StationData:
     real: dict[str, Any]
     micros: dict[int, MicroState] = field(default_factory=dict)
     dtus: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # Soleil assez haut pour que les panneaux produisent : une donnée figée est alors suspecte.
+    daylight: bool = False
+    # Production par jour d'après les mesures par onduleur ({jour: Wh}) : aujourd'hui et la veille.
+    day_energy: dict[date, float] = field(default_factory=dict)
 
 
 def _last(values: list[float], index: int) -> float | None:
@@ -106,6 +113,27 @@ def micro_state(day: MicroDay | None, day_date: date, now: datetime) -> MicroSta
     )
 
 
+def day_energy(days: dict[int, MicroDay]) -> float | None:
+    """Production d'une journée (Wh) : somme du dernier cumul de chaque entrée PV."""
+    total, found = 0.0, False
+    for day in days.values():
+        for points in day.ports.values():
+            if points:
+                total += points[-1].energy
+                found = True
+    return round(total, 1) if found else None
+
+
+def is_daylight(hass: HomeAssistant, when: datetime) -> bool:
+    """Le soleil est-il assez haut pour que les panneaux produisent ?"""
+    try:
+        location, elevation = get_astral_location(hass)
+        return location.solar_elevation(when, elevation) > DAYLIGHT_ELEVATION
+    except (ValueError, TypeError) as err:  # emplacement de Home Assistant non configuré
+        _LOGGER.debug("Hauteur du soleil incalculable : %s", err)
+        return False
+
+
 def _positions(items: list[dict[str, Any]]) -> dict[int, dict[str, int]]:
     """Première position connue de chaque onduleur (le port 1 pour un onduleur à plusieurs entrées)."""
     positions: dict[int, dict[str, int]] = {}
@@ -139,6 +167,8 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
         self.layout: dict[int, dict[int, dict[str, int]]] = {}
         self._micros_fetched_at: datetime | None = None
         self._module_warned = False
+        # Dernière relecture de la veille : {sid: (jour, Wh, lu à)}
+        self._previous_day: dict[int, tuple[date, float, datetime]] = {}
 
     async def _refresh_inventory(self) -> None:
         now = dt_util.utcnow()
@@ -161,8 +191,34 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
                 self.layout.setdefault(station["id"], {})
         self._micros_fetched_at = now
 
+    async def _previous_day_energy(self, sid: int, today: date) -> tuple[date, float] | None:
+        """Production de la veille, relue de temps en temps (mesures envoyées en différé)."""
+        yesterday = today - timedelta(days=1)
+        now = dt_util.utcnow()
+        cached = self._previous_day.get(sid)
+        if cached and cached[0] == yesterday and now - cached[2] < PREVIOUS_DAY_REFRESH_INTERVAL:
+            return cached[0], cached[1]
+        try:
+            energy = day_energy(await self.api.get_module_day_data(sid, yesterday.isoformat()))
+        except SolensoAuthError:
+            raise
+        except SolensoError as err:
+            _LOGGER.debug("Production de la veille indisponible : %s", err)
+            return (cached[0], cached[1]) if cached and cached[0] == yesterday else None
+        if energy is None:
+            return None
+        if cached and cached[0] == yesterday and energy > cached[1]:
+            _LOGGER.info(
+                "Mesures de la veille reçues en différé : %.0f Wh au lieu de %.0f Wh", energy, cached[1]
+            )
+        self._previous_day[sid] = (yesterday, energy, now)
+        return yesterday, energy
+
     async def _station(self, sid: int, previous: StationData | None) -> StationData:
-        station = StationData(real=await self.api.get_station_real_data(sid))
+        now = dt_util.now()
+        station = StationData(
+            real=await self.api.get_station_real_data(sid), daylight=is_daylight(self.hass, now)
+        )
 
         try:
             station.dtus = {d["id"]: d for d in await self.api.get_dtus(sid) if "id" in d}
@@ -174,7 +230,6 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
 
         if not self.micros.get(sid):
             return station
-        now = dt_util.now()
         try:
             days = await self.api.get_module_day_data(sid, now.date().isoformat())
         except SolensoAuthError:
@@ -186,6 +241,10 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
             station.micros = previous.micros if previous else {}
             return station
         self._module_warned = False
+        if (energy := day_energy(days)) is not None:
+            station.day_energy[now.date()] = energy
+        if (prev := await self._previous_day_energy(sid, now.date())) is not None:
+            station.day_energy[prev[0]] = prev[1]
         station.micros = {
             micro["id"]: micro_state(days.get(micro["id"]), now.date(), now)
             for micro in self.micros[sid]

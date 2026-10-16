@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 0.6.0 — 2026-10-16
+
+- **Rattrapage des mesures envoyées en différé.** Quand la passerelle DTU perd Internet, elle renvoie ses mesures plus tard ; le cloud ne les remontait pas en temps réel et la Production cumulée s'arrêtait au moment de la coupure. La journée de la veille est désormais relue toutes les heures d'après les mesures par onduleur, et l'énergie manquante est ajoutée au compteur, une seule fois. Les mesures par onduleur servent aussi de second avis sur la production du jour.
+- **Plus de faux 0 W en plein jour.** Quand les remontées s'arrêtent alors que le soleil est haut (plus de 10°), la puissance de la centrale et les mesures instantanées des onduleurs (puissance, tension et courant panneau) passent indisponibles au lieu de 0. La nuit, elles restent à 0 comme avant. Les productions (jour, mois, année, total, cumulée) restent lisibles.
+
 ## 0.5.0 — 2026-10-11
 
 - Nouveau capteur **Production cumulée** pour le tableau Énergie : il suit la production heure par heure, au lieu de la « Production totale » que le cloud ne recalcule qu'une fois par nuit (toute la production de la veille apparaissait d'un bloc vers 2 h). Compteur toujours croissant, sans à-coup à minuit, qui rattrape la production manquée pendant un redémarrage ou une coupure du cloud.
