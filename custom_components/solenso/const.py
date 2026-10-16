@@ -30,8 +30,15 @@ MICRO_STALE_DELAY = timedelta(minutes=45)
 DAYLIGHT_ELEVATION = 10.0
 
 # La DTU peut renvoyer ses mesures en différé (coupure Internet chez soi) : la
-# journée de la veille est relue à cet intervalle pour rattraper l'énergie manquée.
+# journée de la veille est relue à cet intervalle et réécrite dans les statistiques.
 PREVIOUS_DAY_REFRESH_INTERVAL = timedelta(hours=1)
 
-# En dessous de cet écart (Wh), une différence entre sources est un arrondi, pas un rattrapage.
-CATCH_UP_MIN_WH = 10.0
+# Statistiques de production : après un long arrêt de Home Assistant, au plus ce
+# nombre de journées est relu pour combler le trou.
+CATCH_UP_MAX_DAYS = 31
+
+# Reprise de l'historique au premier lancement : au plus un an, arrêt après une
+# semaine sans aucune mesure, une requête par seconde pour ménager le cloud.
+BACKFILL_MAX_DAYS = 365
+BACKFILL_EMPTY_DAYS = 7
+BACKFILL_REQUEST_DELAY = 1.0

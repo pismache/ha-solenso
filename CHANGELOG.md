@@ -2,8 +2,9 @@
 
 ## 0.6.0 — 2026-10-16
 
-- **Rattrapage des mesures envoyées en différé.** Quand la passerelle DTU perd Internet, elle renvoie ses mesures plus tard ; le cloud ne les remontait pas en temps réel et la Production cumulée s'arrêtait au moment de la coupure. La journée de la veille est désormais relue toutes les heures d'après les mesures par onduleur, et l'énergie manquante est ajoutée au compteur, une seule fois. Les mesures par onduleur servent aussi de second avis sur la production du jour.
-- **Plus de faux 0 W en plein jour.** Quand les remontées s'arrêtent alors que le soleil est haut (plus de 10°), la puissance de la centrale et les mesures instantanées des onduleurs (puissance, tension et courant panneau) passent indisponibles au lieu de 0. La nuit, elles restent à 0 comme avant. Les productions (jour, mois, année, total, cumulée) restent lisibles.
+- **Statistique de production heure par heure pour le tableau Énergie** (`solenso:production_<centrale>`), calculée d'après les mesures par onduleur du cloud. Quand la passerelle DTU renvoie ses mesures en différé après une coupure Internet, les deux dernières journées sont réécrites : l'énergie s'inscrit à l'heure où elle a été produite. Au premier lancement, l'historique conservé par le cloud est repris (au plus un an). À sélectionner à la place de la Production cumulée dans le tableau Énergie.
+- **Plus de faux 0 W en plein jour.** Quand les remontées s'arrêtent alors que le soleil est haut (plus de 10°), la puissance de la centrale et les mesures instantanées des onduleurs (puissance, tension et courant panneau) passent indisponibles au lieu de 0. La nuit, elles restent à 0 comme avant.
+- Home Assistant 2026.1 minimum.
 
 ## 0.5.0 — 2026-10-11
 

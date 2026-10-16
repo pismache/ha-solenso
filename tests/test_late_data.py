@@ -2,9 +2,8 @@
 
 from datetime import datetime, timedelta
 
-from homeassistant.core import HomeAssistant, State
+from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import mock_restore_cache_with_extra_data
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMockResponse
 import pytest
 
@@ -25,7 +24,6 @@ from .test_micros import (
     slots,
 )
 
-COUNTER = "sensor.maison_energy_produced"
 POWER = "sensor.maison_power"
 MICRO_POWER = "sensor.micro_onduleur_112100000001_power"
 MICRO_ENERGY = "sensor.micro_onduleur_112100000001_energy_today"
@@ -95,33 +93,6 @@ async def test_fresh_data_in_daylight_is_shown(hass: HomeAssistant, aioclient_mo
     await _setup(hass, aioclient_mock, _real(2000, 3), {today: _day(slots(4, 5), 1000.0, 1000.0)})
     assert float(hass.states.get(POWER).state) == 2522.3
     assert float(hass.states.get(MICRO_POWER).state) == 150.0
-
-
-async def test_late_measurements_of_yesterday_are_added_to_the_counter(
-    hass: HomeAssistant, aioclient_mock
-):
-    now = dt_util.now()
-    today, yesterday = now.date(), now.date() - timedelta(days=1)
-    # Hier, le compteur s'est arrêté à 10 736 Wh quand la DTU a décroché.
-    mock_restore_cache_with_extra_data(
-        hass,
-        [(State(COUNTER, "50.2"), {"total": 50_200.0, "last_today": 200.0, "last_day": today.isoformat(),
-                                    "prev_day": yesterday.isoformat(), "prev_max": 10_736.0})],
-    )
-    # La DTU a renvoyé le reste de l'après-midi : la veille vaut maintenant 15 100 Wh.
-    await _setup(
-        hass, aioclient_mock, _real(200, 3),
-        {today.isoformat(): _day(slots(2, 5), 100.0, 100.0),
-         yesterday.isoformat(): _day(["17:45", "18:00"], 7600.0, 7500.0)},
-    )
-    assert float(hass.states.get(COUNTER).state) == pytest.approx(54.564)
-
-    # Une heure après, la veille est relue mais pas recomptée.
-    entry = hass.config_entries.async_entries("solenso")[0]
-    entry.runtime_data._previous_day.clear()
-    await entry.runtime_data.async_refresh()
-    await hass.async_block_till_done()
-    assert float(hass.states.get(COUNTER).state) == pytest.approx(54.564)
 
 
 async def test_yesterday_is_read_at_most_once_an_hour(hass: HomeAssistant, aioclient_mock):

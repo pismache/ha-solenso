@@ -28,7 +28,7 @@ from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import CATCH_UP_MIN_WH, STALE_DATA_DELAY
+from .const import STALE_DATA_DELAY
 from .coordinator import (
     MicroState,
     PortState,
@@ -137,9 +137,6 @@ class Counter:
     total: float | None = None
     last_today: float = 0.0
     last_day: date | None = None
-    # Veille, gardée pour rattraper les mesures que la DTU envoie en différé.
-    prev_day: date | None = None
-    prev_max: float = 0.0
 
 
 def accumulate(counter: Counter, today: float | None, day: date | None) -> Counter:
@@ -159,22 +156,7 @@ def accumulate(counter: Counter, today: float | None, day: date | None) -> Count
         if today == counter.last_today and today > 0:
             # Nouvelle journée mais valeur de la veille pas encore remise à zéro.
             return counter
-        return Counter(counter.total + today, today, day, counter.last_day, counter.last_today)
-    return counter
-
-
-def catch_up(counter: Counter, day: date, energy: float) -> Counter:
-    """Ajouter l'énergie d'un jour déjà compté qui a augmenté après coup (mesures en différé)."""
-    if counter.total is None or counter.last_day is None:
-        return counter
-    if day == counter.last_day and energy - counter.last_today >= CATCH_UP_MIN_WH:
-        return Counter(
-            counter.total + energy - counter.last_today, energy, day, counter.prev_day, counter.prev_max
-        )
-    if day == counter.prev_day and energy - counter.prev_max >= CATCH_UP_MIN_WH:
-        return Counter(
-            counter.total + energy - counter.prev_max, counter.last_today, counter.last_day, day, energy
-        )
+        return Counter(counter.total + today, today, day)
     return counter
 
 
@@ -190,8 +172,6 @@ class CounterStoredData(ExtraStoredData):
             "total": c.total,
             "last_today": c.last_today,
             "last_day": c.last_day.isoformat() if c.last_day else None,
-            "prev_day": c.prev_day.isoformat() if c.prev_day else None,
-            "prev_max": c.prev_max,
         }
 
     @classmethod
@@ -199,14 +179,11 @@ class CounterStoredData(ExtraStoredData):
         try:
             total = data.get("total")
             last_day = data.get("last_day")
-            prev_day = data.get("prev_day")
             return cls(
                 Counter(
                     float(total) if total is not None else None,
                     float(data.get("last_today") or 0.0),
                     date.fromisoformat(last_day) if last_day else None,
-                    date.fromisoformat(prev_day) if prev_day else None,
-                    float(data.get("prev_max") or 0.0),
                 )
             )
         except (TypeError, ValueError):
@@ -247,13 +224,9 @@ class SolensoProductionCounter(CoordinatorEntity[SolensoCoordinator], SensorEnti
         if station is None:
             return
         last = _last_update(station.real)
-        counter = accumulate(
+        self._counter = accumulate(
             self._counter, _float(station.real, "today_eq"), last.date() if last else None
         )
-        # Les mesures par onduleur peuvent être plus complètes (envoi différé de la DTU).
-        for day, energy in sorted(station.day_energy.items()):
-            counter = catch_up(counter, day, energy)
-        self._counter = counter
 
     def _handle_coordinator_update(self) -> None:
         self._update_counter()

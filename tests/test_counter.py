@@ -11,7 +11,7 @@ from pytest_homeassistant_custom_component.common import (
 import pytest
 
 from custom_components.solenso.const import BASE_URL, CONF_STATIONS, DOMAIN, HOYMILES_URL
-from custom_components.solenso.sensor import Counter, accumulate, catch_up
+from custom_components.solenso.sensor import Counter, accumulate
 
 LOGIN = f"{BASE_URL}/iam/auth_login"
 REAL = f"{BASE_URL}/pvm-data/data_count_station_real_data"
@@ -49,7 +49,7 @@ def test_new_day_counts_from_zero():
     c = accumulate(c, 0.0, D1)  # remise à zéro à minuit, encore datée de la veille
     assert c.total == 10_000.0
     c = accumulate(c, 40.0, D2)
-    assert c == Counter(10_040.0, 40.0, D2, D1, 5210.0)
+    assert c == Counter(10_040.0, 40.0, D2)
 
 
 def test_new_day_with_yesterday_value_not_reset_is_ignored():
@@ -57,7 +57,7 @@ def test_new_day_with_yesterday_value_not_reset_is_ignored():
     c = accumulate(c, 5210.0, D2)
     assert c.total == 10_000.0
     c = accumulate(c, 35.0, D2)
-    assert c == Counter(10_035.0, 35.0, D2, D1, 5210.0)
+    assert c == Counter(10_035.0, 35.0, D2)
 
 
 def test_missing_or_older_data_changes_nothing():
@@ -66,47 +66,6 @@ def test_missing_or_older_data_changes_nothing():
     assert accumulate(c, 800.0, None) == c
     assert accumulate(c, 9_000.0, D1) == c
     assert accumulate(c, -5.0, D2) == c
-
-
-def test_late_data_for_yesterday_is_caught_up_once():
-    # La DTU a décroché à 15 h : la veille s'arrête à 10 736 Wh, puis le reste arrive en différé.
-    c = accumulate(Counter(50_000.0, 10_736.0, D1), 200.0, D2)
-    assert c == Counter(50_200.0, 200.0, D2, D1, 10_736.0)
-    c = catch_up(c, D1, 15_100.0)
-    assert c == Counter(54_564.0, 200.0, D2, D1, 15_100.0)
-    # Relue une heure plus tard, la veille n'est plus comptée une deuxième fois.
-    assert catch_up(c, D1, 15_100.0) == c
-    # Le jour courant continue normalement.
-    assert accumulate(c, 900.0, D2).total == 55_264.0
-
-
-def test_late_data_before_the_new_day_starts():
-    # Cette nuit, avant la première remontée du jour : la journée courante est encore la veille.
-    c = Counter(50_000.0, 10_736.0, D1)
-    c = catch_up(c, D1, 15_100.0)
-    assert c == Counter(54_364.0, 15_100.0, D1)
-    # Le matin, la valeur figée de la veille ne fait rien perdre ni compter en double.
-    c = accumulate(c, 10_736.0, D1)
-    assert c.total == 54_364.0
-    c = accumulate(c, 150.0, D2)
-    assert c == Counter(54_514.0, 150.0, D2, D1, 15_100.0)
-
-
-def test_catch_up_ignores_rounding_and_unknown_days():
-    c = Counter(50_000.0, 3671.0, D2, D1, 10_736.0)
-    assert catch_up(c, D2, 3675.0) == c  # simple arrondi entre sources
-    assert catch_up(c, D1, 10_740.0) == c
-    assert catch_up(c, date(2026, 10, 1), 99_000.0) == c  # jour trop ancien
-    assert catch_up(Counter(), D1, 5000.0) == Counter()
-
-
-def test_micro_energy_ahead_of_station_total_is_counted():
-    c = Counter(50_000.0, 3000.0, D2, D1, 10_736.0)
-    c = catch_up(c, D2, 3400.0)
-    assert c == Counter(50_400.0, 3400.0, D2, D1, 10_736.0)
-    # La centrale rattrape ensuite : rien de compté en double.
-    assert accumulate(c, 3400.0, D2) == c
-    assert accumulate(c, 3500.0, D2).total == 50_500.0
 
 
 # --- Capteur dans Home Assistant ---------------------------------------------
@@ -208,24 +167,3 @@ async def test_counter_resumes_after_restart(hass: HomeAssistant, aioclient_mock
     # Pendant l'arrêt, la production du jour est passée de 1 000 à 4 000 Wh : rattrapée.
     await _setup(hass, aioclient_mock, real(4000, now))
     assert float(hass.states.get(ENTITY).state) == 126.0
-
-
-async def test_counter_restores_yesterday_for_catch_up(hass: HomeAssistant, aioclient_mock):
-    now = dt_util.now().replace(hour=15, minute=0, second=0, microsecond=0)
-    yesterday = (now - timedelta(days=1)).date().isoformat()
-    mock_restore_cache_with_extra_data(
-        hass,
-        [
-            (
-                State(ENTITY, "123.0"),
-                {"total": 123_000.0, "last_today": 1000.0, "last_day": now.date().isoformat(),
-                 "prev_day": yesterday, "prev_max": 10_736.0},
-            )
-        ],
-    )
-    entry = await _setup(hass, aioclient_mock, real(1000, now))
-    counter = next(
-        e for e in hass.data["sensor"].entities if e.entity_id == ENTITY
-    )._counter
-    assert counter.prev_day.isoformat() == yesterday and counter.prev_max == 10_736.0
-    assert entry.runtime_data is not None

@@ -25,6 +25,7 @@ from .const import (
     PREVIOUS_DAY_REFRESH_INTERVAL,
 )
 from .module_pb import MicroDay
+from .statistics import ProductionStatistics
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,8 +71,8 @@ class StationData:
     dtus: dict[int, dict[str, Any]] = field(default_factory=dict)
     # Soleil assez haut pour que les panneaux produisent : une donnée figée est alors suspecte.
     daylight: bool = False
-    # Production par jour d'après les mesures par onduleur ({jour: Wh}) : aujourd'hui et la veille.
-    day_energy: dict[date, float] = field(default_factory=dict)
+    # Mesures par onduleur du jour et de la veille ({jour: {id onduleur: série}}).
+    days: dict[date, dict[int, MicroDay]] = field(default_factory=dict)
 
 
 def _last(values: list[float], index: int) -> float | None:
@@ -111,17 +112,6 @@ def micro_state(day: MicroDay | None, day_date: date, now: datetime) -> MicroSta
         grid_voltage=None if asleep else _last(day.grid_voltage, index),
         grid_frequency=None if asleep else _last(day.grid_frequency, index),
     )
-
-
-def day_energy(days: dict[int, MicroDay]) -> float | None:
-    """Production d'une journée (Wh) : somme du dernier cumul de chaque entrée PV."""
-    total, found = 0.0, False
-    for day in days.values():
-        for points in day.ports.values():
-            if points:
-                total += points[-1].energy
-                found = True
-    return round(total, 1) if found else None
 
 
 def is_daylight(hass: HomeAssistant, when: datetime) -> bool:
@@ -167,8 +157,10 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
         self.layout: dict[int, dict[int, dict[str, int]]] = {}
         self._micros_fetched_at: datetime | None = None
         self._module_warned = False
-        # Dernière relecture de la veille : {sid: (jour, Wh, lu à)}
-        self._previous_day: dict[int, tuple[date, float, datetime]] = {}
+        # Dernière relecture de la veille : {sid: (jour, mesures, lue à)}
+        self._previous_cache: dict[int, tuple[date, dict[int, MicroDay], datetime]] = {}
+        # Production horaire dans les statistiques (tableau Énergie), une par centrale.
+        self.statistics = {s["id"]: ProductionStatistics(hass, api, s) for s in self.stations}
 
     async def _refresh_inventory(self) -> None:
         now = dt_util.utcnow()
@@ -191,28 +183,22 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
                 self.layout.setdefault(station["id"], {})
         self._micros_fetched_at = now
 
-    async def _previous_day_energy(self, sid: int, today: date) -> tuple[date, float] | None:
-        """Production de la veille, relue de temps en temps (mesures envoyées en différé)."""
+    async def _previous_day(self, sid: int, today: date) -> tuple[date, dict[int, MicroDay]] | None:
+        """Mesures de la veille, relues de temps en temps (la DTU peut les envoyer en différé)."""
         yesterday = today - timedelta(days=1)
         now = dt_util.utcnow()
-        cached = self._previous_day.get(sid)
+        cached = self._previous_cache.get(sid)
         if cached and cached[0] == yesterday and now - cached[2] < PREVIOUS_DAY_REFRESH_INTERVAL:
             return cached[0], cached[1]
         try:
-            energy = day_energy(await self.api.get_module_day_data(sid, yesterday.isoformat()))
+            days = await self.api.get_module_day_data(sid, yesterday.isoformat())
         except SolensoAuthError:
             raise
         except SolensoError as err:
-            _LOGGER.debug("Production de la veille indisponible : %s", err)
+            _LOGGER.debug("Mesures de la veille indisponibles : %s", err)
             return (cached[0], cached[1]) if cached and cached[0] == yesterday else None
-        if energy is None:
-            return None
-        if cached and cached[0] == yesterday and energy > cached[1]:
-            _LOGGER.info(
-                "Mesures de la veille reçues en différé : %.0f Wh au lieu de %.0f Wh", energy, cached[1]
-            )
-        self._previous_day[sid] = (yesterday, energy, now)
-        return yesterday, energy
+        self._previous_cache[sid] = (yesterday, days, now)
+        return yesterday, days
 
     async def _station(self, sid: int, previous: StationData | None) -> StationData:
         now = dt_util.now()
@@ -241,10 +227,9 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
             station.micros = previous.micros if previous else {}
             return station
         self._module_warned = False
-        if (energy := day_energy(days)) is not None:
-            station.day_energy[now.date()] = energy
-        if (prev := await self._previous_day_energy(sid, now.date())) is not None:
-            station.day_energy[prev[0]] = prev[1]
+        station.days[now.date()] = days
+        if (prev := await self._previous_day(sid, now.date())) is not None:
+            station.days[prev[0]] = prev[1]
         station.micros = {
             micro["id"]: micro_state(days.get(micro["id"]), now.date(), now)
             for micro in self.micros[sid]
@@ -262,4 +247,16 @@ class SolensoCoordinator(DataUpdateCoordinator[dict[int, StationData]]):
             raise ConfigEntryAuthFailed(str(err)) from err
         except SolensoError as err:
             raise UpdateFailed(str(err)) from err
+        for sid, station in data.items():
+            if not station.days:
+                continue
+            try:
+                await self.statistics[sid].async_update(station.days)
+            except SolensoAuthError as err:
+                raise ConfigEntryAuthFailed(str(err)) from err
+            except SolensoError as err:
+                # Les capteurs restent à jour ; les statistiques seront réécrites au prochain passage.
+                _LOGGER.debug("Statistiques de production non mises à jour : %s", err)
+            except Exception:  # noqa: BLE001 - une erreur de la base ne doit pas couper les capteurs
+                _LOGGER.exception("Échec de l'écriture des statistiques de production")
         return data
